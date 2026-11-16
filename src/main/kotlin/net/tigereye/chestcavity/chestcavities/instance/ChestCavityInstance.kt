@@ -105,6 +105,7 @@ class ChestCavityInstance(
         metabolismRemainder = other.metabolismRemainder
         lungRemainder = other.lungRemainder
         furnaceProgress = other.furnaceProgress
+        photosynthesisProgress = other.photosynthesisProgress
         // NOTE: connectedCrystal is a live world entity reference and must not travel to another body (L-07).
 
         inventory.removeListener(this)
