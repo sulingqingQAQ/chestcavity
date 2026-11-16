@@ -74,9 +74,13 @@ class GeneratedChestCavityType(
     override fun generateLootDrops(random: RandomSource, looting: Int): List<ItemStack> {
         if (playerChestCavity) return emptyList()
 
+        // L-05: only registered, non pseudo organs may be rolled. Exceptionally-mapped items
+        // (e.g. the nether star entry of the wither template) are pseudo organs and must never
+        // show up in the extra bundle — otherwise an unopened wither can drop a second star.
         val organPool = (0 until defaultInventory.containerSize)
             .map { defaultInventory.getItem(it) }
             .filter { !it.isEmpty }
+            .filter { isTrueOrgan(it) }
             .map { it.copy() }
             .toMutableList()
 
@@ -95,6 +99,17 @@ class GeneratedChestCavityType(
             }
         }
         return drops
+    }
+
+    /**
+     * Port of the original OrganManager#isTrueOrgan: the item must be a registered organ and must not
+     * be flagged as a pseudo organ. Items that are only organs through exceptionalOrgans (or not at all)
+     * therefore never enter the droppable pile.
+     */
+    private fun isTrueOrgan(stack: ItemStack): Boolean {
+        if (stack.isEmpty) return false
+        val data = net.tigereye.chestcavity.chestcavities.organs.OrganManager.getEntry(stack) ?: return false
+        return !data.pseudoOrgan
     }
 
     private fun drawOrgansFromPile(pile: MutableList<ItemStack>, rolls: Int, random: RandomSource, loot: MutableList<ItemStack>) {
