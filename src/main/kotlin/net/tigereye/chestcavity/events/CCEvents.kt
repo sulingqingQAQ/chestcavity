@@ -134,15 +134,21 @@ object CCEvents {
     }
 
     // --- Status effect modification (rotgut/kidneys/liver/buff purging) ---
-    // Runs on MobEffectEvent.Applicable, which fires inside addEffect BEFORE the
-    // instance is entered into activeEffects (L-10). A cancelled application never
-    // reaches the effect map, so suppression and duration shortening no longer
-    // fight the outer addEffect's unconditional write-back of the original.
-    private var modifyingEffect = false
+    // Rotgut suppression runs on MobEffectEvent.Applicable, which fires inside
+    // addEffect BEFORE the instance is entered into activeEffects (L-10). A
+    // cancelled application never reaches the effect map and addEffect then
+    // correctly reports failure to the caller.
+    //
+    // Duration shortening no longer goes through Applicable + re-entry (R2): it
+    // rewrites the instance via a mixin that swaps the addEffect parameter at
+    // HEAD (the original mod did the same with ModifyVariable on
+    // addStatusEffect). That keeps addEffect's return value true so /effect
+    // still reports success, preserves the source entity, and lets vanilla's
+    // own merge path handle the shortened instance. No re-entry flag exists
+    // anymore, so there is nothing to go stale (R3).
 
     @SubscribeEvent
     fun onMobEffectApplicable(event: MobEffectEvent.Applicable) {
-        if (modifyingEffect) return
         val entity = event.entity as? LivingEntity ?: return
         val cce = ChestCavityEntity.of(entity) ?: return
         val cc = cce.chestCavityInstance
@@ -155,9 +161,20 @@ object CCEvents {
             val rotgut = cc.organScore(CCOrganScores.ROTGUT) + cc.organScore(CCOrganScores.ROT_DIGESTION)
             if (rotgut > 0) {
                 event.result = MobEffectEvent.Applicable.Result.DO_NOT_APPLY
-                return
             }
         }
+    }
+
+    /**
+     * Returns a shortened copy of [effect] for entities whose organs shorten
+     * durations, or null when no shortening applies. Called from the
+     * addEffect-parameter mixin; infinite durations are left untouched instead
+     * of being cut to 1 tick.
+     */
+    fun shortenAppliedEffect(entity: LivingEntity, effect: net.minecraft.world.effect.MobEffectInstance): net.minecraft.world.effect.MobEffectInstance? {
+        val cce = ChestCavityEntity.of(entity) ?: return null
+        val cc = cce.chestCavityInstance
+        if (!cc.opened) return null
 
         val category = effect.effect.value().category
         var factor = 1f
@@ -193,20 +210,23 @@ object CCEvents {
             }
         }
 
-        // Replace the application with a shorter-duration instance if modified.
-        // Cancelling makes the outer addEffect a no-op; the re-entered call (flagged
-        // so this handler ignores it) applies the shortened version. Infinite
-        // durations are left untouched instead of being cut to 1 tick.
-        if (factor < 1f && !effect.isInfiniteDuration) {
-            val newDuration = (effect.duration * factor).toInt().coerceAtLeast(1)
-            event.result = MobEffectEvent.Applicable.Result.DO_NOT_APPLY
-            modifyingEffect = true
-            entity.addEffect(net.minecraft.world.effect.MobEffectInstance(
-                effect.effect, newDuration, effect.amplifier,
-                effect.isAmbient, effect.isVisible, effect.showIcon()
-            ))
-            modifyingEffect = false
+        if (factor >= 1f || effect.isInfiniteDuration) return null
+        val newDuration = (effect.duration * factor).toInt().coerceAtLeast(1)
+
+        // MobEffectInstance has no public duration setter, so rebuild it from
+        // its serialized form (same shape collectFurnaceDurations reads) to
+        // keep amplifier, visibility flags and the hidden-effect chain intact.
+        val tag = effect.save() as? net.minecraft.nbt.CompoundTag
+        if (tag != null) {
+            tag.putInt("duration", newDuration)
+            val parsed = net.minecraft.world.effect.MobEffectInstance.CODEC
+                .parse(net.minecraft.nbt.NbtOps.INSTANCE, tag).result().orElse(null)
+            if (parsed != null) return parsed
         }
+        return net.minecraft.world.effect.MobEffectInstance(
+            effect.effect, newDuration, effect.amplifier,
+            effect.isAmbient, effect.isVisible, effect.showIcon()
+        )
     }
 
     // --- Entity interaction (chest opener on mobs, milking silk, shearing silk) ---
