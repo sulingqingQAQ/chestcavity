@@ -233,17 +233,102 @@ object ChestCavityUtil {
 
     // --- Death ---
 
-    fun onDeath(entity: ChestCavityEntity) {
-        val cc = entity.chestCavityInstance
+    /**
+     * Commits the death transaction after the death has been approved by the platform.
+     *
+     * Deliberately not wired to the (cancellable) death event: a later listener may still save the
+     * entity, in which case nothing about the body may change (L-03 / A13). Runs in the drops phase
+     * instead, where [drops] is the platform's own captured drop collection, so every item leaving the
+     * body stays subject to the platform's drop handling and to any listener that cancels or replaces
+     * it (L-03).
+     */
+    fun commitDeath(cc: ChestCavityInstance, drops: MutableCollection<net.minecraft.world.entity.item.ItemEntity>) {
+        if (cc.deathCommitted) return
+        cc.deathCommitted = true
+
+        // Release transient, world-bound state before anything else (L-07). Done here as well as in
+        // the type hook so a type that overrides onDeath without calling back cannot leak them.
+        cc.releaseTransientState()
         cc.type.onDeath(cc)
+        cc.projectileCooldown = 0
+        cc.ccBeingOpened = null
+
         val owner = cc.owner
-        if (owner is net.minecraft.world.entity.player.Player) {
-            if (!CCConfig.KEEP_CHEST_CAVITY.get()) {
-                cc.compatibilityId = java.util.UUID.randomUUID()
-                generateChestCavityIfOpened(cc)
-            }
-            insertWelfareOrgans(cc)
+        if (owner !is net.minecraft.world.entity.player.Player) {
+            // Mobs: only an opened body has organs to shed; the body itself is removed with the entity.
+            // Welfare stays player-only, exactly like the original (it lives inside the player branch).
+            if (cc.opened) dropUnboundOrgans(cc, drops)
+            return
         }
+
+        if (!CCConfig.KEEP_CHEST_CAVITY.get()) {
+            // Classify by the OLD body id first, then rebuild the body under a new id (A-01 / L-02).
+            if (cc.opened) dropUnboundOrgans(cc, drops)
+            val newBodyId = java.util.UUID.randomUUID()
+            cc.compatibilityId = newBodyId
+            if (cc.opened) {
+                // Fills the fresh default inventory against the new body id and re-evaluates. The
+                // listener is detached while the slots are rewritten so a half-filled body is never
+                // evaluated (and never pushed to the dying client).
+                cc.inventory.removeListener(cc)
+                try {
+                    generateChestCavityIfOpened(cc)
+                } finally {
+                    cc.inventory.addListener(cc)
+                }
+            }
+            // The body id is decided here and must survive a type implementation that still writes it
+            // back to the account id; regenerate only tags organs with whatever is current (L-02).
+            cc.compatibilityId = newBodyId
+            adoptBodyId(cc, owner.uuid, newBodyId)
+        }
+        // KEEP_CHEST_CAVITY keeps the current body, its inventory and its id untouched (A-09).
+        insertWelfareOrgans(cc, drops)
+        evaluateChestCavity(cc)
+    }
+
+    /**
+     * Re-tags every organ that a type just stamped with the account id so it belongs to the body id
+     * that was decided by the death transaction (L-02).
+     *
+     * The body of a player is owned by the body, not by the account: two successive lives of the same
+     * account are different donors, and an organ that carries the account id would be read as
+     * "someone else's organ" (`compatibility == 0`) and shed again on the very next death. This keeps
+     * the decision of [commitDeath] authoritative even when the type implementation still writes the
+     * account id, and is a no-op once the type no longer writes the id at all.
+     */
+    private fun adoptBodyId(cc: ChestCavityInstance, accountId: java.util.UUID, bodyId: java.util.UUID) {
+        if (accountId == bodyId) return
+        val componentType = net.tigereye.chestcavity.registration.CCDataComponents.ORGAN_COMPATIBILITY.get()
+        for (i in 0 until cc.inventory.containerSize) {
+            val stack = cc.inventory.getItem(i)
+            if (stack.isEmpty) continue
+            val compat = stack.get(componentType) ?: continue
+            if (compat.ownerUuid != accountId) continue
+            stack.set(componentType, compat.copy(ownerUuid = bodyId))
+        }
+        evaluateChestCavity(cc)
+    }
+
+    /**
+     * Drops every organ that is not bound to this body, judged by the body id that was valid before
+     * the death (A-01). The stacks are routed into the platform drop collection.
+     */
+    fun dropUnboundOrgans(cc: ChestCavityInstance, drops: MutableCollection<net.minecraft.world.entity.item.ItemEntity>) {
+        cc.inventory.removeListener(cc)
+        try {
+            for (i in 0 until cc.inventory.containerSize) {
+                val stack = cc.inventory.getItem(i)
+                if (stack.isEmpty) continue
+                if (getCompatibilityLevel(cc, stack) < 2) {
+                    collectDrop(cc, cc.inventory.removeItemNoUpdate(i), drops)
+                }
+            }
+        } finally {
+            cc.inventory.addListener(cc)
+        }
+        // The scores must reflect the shed organs before anything (welfare) is decided on them (A-15).
+        evaluateChestCavity(cc)
     }
 
     fun insertWelfareOrgans(

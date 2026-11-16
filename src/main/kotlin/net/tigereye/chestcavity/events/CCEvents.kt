@@ -7,7 +7,6 @@ import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
-import net.neoforged.neoforge.event.entity.living.LivingDeathEvent
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent
 import net.neoforged.neoforge.event.entity.living.MobEffectEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
@@ -126,10 +125,18 @@ object CCEvents {
         target.deltaMovement = target.deltaMovement.add(0.0, upward, 0.0)
     }
 
-    @SubscribeEvent
-    fun onLivingDeath(event: LivingDeathEvent) {
+    /**
+     * Death transaction entry point.
+     *
+     * Deliberately NOT on [LivingDeathEvent]: that event is cancellable and every listener may still
+     * resurrect the entity, in which case nothing about the body may change (L-03 / A13). The drops
+     * phase only runs after the death was approved, and it hands us the platform's own drop
+     * collection, so the organs we shed are still subject to every later drop listener.
+     */
+    @SubscribeEvent(priority = net.neoforged.bus.api.EventPriority.HIGHEST)
+    fun onLivingDrops(event: net.neoforged.neoforge.event.entity.living.LivingDropsEvent) {
         val cce = ChestCavityEntity.of(event.entity) ?: return
-        ChestCavityUtil.onDeath(cce)
+        ChestCavityUtil.commitDeath(cce.chestCavityInstance, event.drops)
     }
 
     @SubscribeEvent

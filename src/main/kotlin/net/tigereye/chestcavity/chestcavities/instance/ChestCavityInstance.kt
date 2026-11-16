@@ -24,6 +24,9 @@ class ChestCavityInstance(
     /** True once a full evaluation (scores + attribute modifiers) has been performed at least once. */
     var initialized = false
 
+    /** True once the death transaction for this body has been committed. Guards against a second commit. */
+    var deathCommitted = false
+
     var oldOrganScores: Map<ResourceLocation, Float> = emptyMap()
     var organScores: Map<ResourceLocation, Float>
         get() = _organScores
@@ -77,6 +80,19 @@ class ChestCavityInstance(
         }
     }
 
+    /**
+     * Releases transient, world-bound state that must not survive this body.
+     * Used by death and by body replacement before a clone.
+     */
+    fun releaseTransientState() {
+        projectileQueue.clear()
+        projectileCooldown = 0
+        onHitListeners.clear()
+        connectedCrystal?.setBeamTarget(null)
+        connectedCrystal = null
+        ccBeingOpened = null
+    }
+
     fun toTag(tag: CompoundTag) {
         tag.put("ChestCavity", CompoundTag().apply {
             putBoolean("opened", opened)
@@ -102,7 +118,7 @@ class ChestCavityInstance(
         metabolismRemainder = other.metabolismRemainder
         lungRemainder = other.lungRemainder
         furnaceProgress = other.furnaceProgress
-        connectedCrystal = other.connectedCrystal
+        // NOTE: connectedCrystal is a live world entity reference and must not travel to another body (L-07).
 
         inventory.removeListener(this)
         inventory.readTags(other.inventory.getTags())

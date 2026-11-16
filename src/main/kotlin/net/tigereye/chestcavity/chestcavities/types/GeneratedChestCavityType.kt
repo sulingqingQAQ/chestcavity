@@ -50,6 +50,9 @@ class GeneratedChestCavityType(
     override fun isSlotForbidden(index: Int): Boolean = index in forbiddenSlots
 
     override fun fillChestCavityInventory(chestCavity: ChestCavityInventory) {
+        // The generated cavity is a fresh body: clear first, otherwise anything left over from the
+        // previous body silently survives a rebuild (A-01).
+        chestCavity.clearContent()
         for (i in 0 until defaultInventory.containerSize.coerceAtMost(chestCavity.containerSize)) {
             chestCavity.setItem(i, defaultInventory.getItem(i).copy())
         }
@@ -132,7 +135,10 @@ class GeneratedChestCavityType(
     }
 
     override fun onDeath(instance: ChestCavityInstance) {
-        // Default: no special behavior on death
+        // Queued projectile abilities and an end-crystal beam are bound to the living body; a corpse
+        // must not keep firing them for the remaining death animation, and the beam must not stay
+        // connected to an entity that is about to be removed (L-07).
+        instance.releaseTransientState()
     }
 
     // --- Mutators for serializer ---
