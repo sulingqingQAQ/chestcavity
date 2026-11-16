@@ -139,6 +139,28 @@ class GeneratedChestCavityType(
                 net.tigereye.chestcavity.registration.OrganCompatibility(compatibilityId, name)
             )
         }
+
+        // A-04: non-player cavities get a random universal donor roll, so harvesting a mob can yield
+        // already-unbound true organs. Same contract as the original: boss cavities always roll
+        // (3-5 attempts), everything else rolls UNIVERSAL_DONOR_RATE for 1-5 attempts, and each
+        // attempt only unbinds a true organ (empty/forbidden/pseudo slots just waste the attempt).
+        if (playerChestCavity) return
+
+        val random = instance.owner.random
+        var universalOrgans = 0
+        if (bossChestCavity) {
+            universalOrgans = 3 + random.nextInt(2) + random.nextInt(2)
+        } else if (random.nextFloat() < CCConfig.UNIVERSAL_DONOR_RATE.get().toFloat()) {
+            universalOrgans = 1 + random.nextInt(3) + random.nextInt(3)
+        }
+        while (universalOrgans > 0) {
+            val slot = random.nextInt(instance.inventory.containerSize)
+            val stack = instance.inventory.getItem(slot)
+            if (!stack.isEmpty && isTrueOrgan(stack)) {
+                stack.remove(net.tigereye.chestcavity.registration.CCDataComponents.ORGAN_COMPATIBILITY.get())
+            }
+            universalOrgans--
+        }
     }
 
     override fun isOpenable(instance: ChestCavityInstance): Boolean {
