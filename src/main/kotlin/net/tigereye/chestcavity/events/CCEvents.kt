@@ -133,11 +133,15 @@ object CCEvents {
         event.newSpeed = ChestCavityUtil.applyNervesToMining(cce.chestCavityInstance, event.newSpeed)
     }
 
-    // --- Status effect modification (kidneys/liver/buff purging) ---
+    // --- Status effect modification (rotgut/kidneys/liver/buff purging) ---
+    // Runs on MobEffectEvent.Applicable, which fires inside addEffect BEFORE the
+    // instance is entered into activeEffects (L-10). A cancelled application never
+    // reaches the effect map, so suppression and duration shortening no longer
+    // fight the outer addEffect's unconditional write-back of the original.
     private var modifyingEffect = false
 
     @SubscribeEvent
-    fun onMobEffectAdded(event: MobEffectEvent.Added) {
+    fun onMobEffectApplicable(event: MobEffectEvent.Applicable) {
         if (modifyingEffect) return
         val entity = event.entity as? LivingEntity ?: return
         val cce = ChestCavityEntity.of(entity) ?: return
@@ -150,9 +154,7 @@ object CCEvents {
         if (effect.effect == net.minecraft.world.effect.MobEffects.HUNGER) {
             val rotgut = cc.organScore(CCOrganScores.ROTGUT) + cc.organScore(CCOrganScores.ROT_DIGESTION)
             if (rotgut > 0) {
-                modifyingEffect = true
-                entity.removeEffect(effect.effect)
-                modifyingEffect = false
+                event.result = MobEffectEvent.Applicable.Result.DO_NOT_APPLY
                 return
             }
         }
@@ -191,11 +193,14 @@ object CCEvents {
             }
         }
 
-        // Replace effect with shorter duration if modified
-        if (factor < 1f) {
+        // Replace the application with a shorter-duration instance if modified.
+        // Cancelling makes the outer addEffect a no-op; the re-entered call (flagged
+        // so this handler ignores it) applies the shortened version. Infinite
+        // durations are left untouched instead of being cut to 1 tick.
+        if (factor < 1f && !effect.isInfiniteDuration) {
             val newDuration = (effect.duration * factor).toInt().coerceAtLeast(1)
+            event.result = MobEffectEvent.Applicable.Result.DO_NOT_APPLY
             modifyingEffect = true
-            entity.removeEffect(effect.effect)
             entity.addEffect(net.minecraft.world.effect.MobEffectInstance(
                 effect.effect, newDuration, effect.amplifier,
                 effect.isAmbient, effect.isVisible, effect.showIcon()
