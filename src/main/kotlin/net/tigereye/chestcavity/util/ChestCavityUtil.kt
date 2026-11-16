@@ -131,6 +131,7 @@ object ChestCavityUtil {
             scores.clear()
             cc.type.defaultOrganScores.let { scores.putAll(it) }
             cc.organScores = scores
+            cc.initialized = true
             organUpdate(cc)
             return
         }
@@ -165,7 +166,20 @@ object ChestCavityUtil {
         }
 
         cc.organScores = scores
+        cc.initialized = true
         organUpdate(cc)
+    }
+
+    /**
+     * Resolves the datapack-defined type for this owner and performs the first full evaluation.
+     * This is the single explicit "initialisation finished" point for a fresh instance (L-01).
+     */
+    fun initializeChestCavity(cc: ChestCavityInstance) {
+        cc.type = net.tigereye.chestcavity.chestcavities.instance.ChestCavityInstanceFactory.resolveType(cc.owner.type)
+        // Before the datapack types are loaded there is nothing to evaluate against; stay
+        // uninitialised so the next join/tick retries instead of freezing an empty score map (L-01).
+        if (net.tigereye.chestcavity.chestcavities.types.ChestCavityTypeManager.types.isEmpty()) return
+        evaluateChestCavity(cc)
     }
 
     fun organUpdate(cc: ChestCavityInstance) {
@@ -193,6 +207,8 @@ object ChestCavityUtil {
         if (!cc.opened) return
         cc.type.fillChestCavityInventory(cc.inventory)
         cc.type.setOrganCompatibility(cc)
+        // Recalculate from the freshly generated inventory so the terminal state is correct (L-01).
+        evaluateChestCavity(cc)
     }
 
     // --- On-hit ---

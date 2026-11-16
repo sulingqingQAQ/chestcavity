@@ -16,7 +16,6 @@ import net.neoforged.neoforge.event.tick.EntityTickEvent
 import net.tigereye.chestcavity.CCConfig
 import net.tigereye.chestcavity.ChestCavity
 import net.tigereye.chestcavity.chestcavities.ChestCavityEntity
-import net.tigereye.chestcavity.chestcavities.instance.ChestCavityInstanceFactory
 import net.tigereye.chestcavity.registration.CCOrganScores
 import net.tigereye.chestcavity.util.ChestCavityUtil
 import net.tigereye.chestcavity.util.OrganUtil
@@ -26,18 +25,33 @@ import kotlin.math.min
 @EventBusSubscriber(modid = ChestCavity.MODID)
 object CCEvents {
 
+    /**
+     * Deterministic initialisation point for a fresh body.
+     *
+     * The instance is created in the [net.minecraft.world.entity.LivingEntity] constructor, far too
+     * early to resolve datapack types or to touch attributes. This event fires once the entity is
+     * fully constructed and is being added to a level, which is the first moment the body exists as a
+     * real thing - and unlike the tick path it does not depend on a player keeping the chunk alive,
+     * so a summoned or scripted body is never left with an empty score map (L-01).
+     */
+    @SubscribeEvent
+    fun onEntityJoinLevel(event: net.neoforged.neoforge.event.entity.EntityJoinLevelEvent) {
+        if (event.level.isClientSide) return
+        val cce = ChestCavityEntity.of(event.entity) ?: return
+        val cc = cce.chestCavityInstance
+        if (!cc.initialized) {
+            ChestCavityUtil.initializeChestCavity(cc)
+        }
+    }
+
     @SubscribeEvent
     fun onEntityTick(event: EntityTickEvent.Post) {
         val entity = event.entity
         val cce = ChestCavityEntity.of(entity) ?: return
         val cc = cce.chestCavityInstance
-        // Lazily resolve type after datapacks have loaded
-        if (cc.type.defaultOrganScores.isEmpty() && entity is LivingEntity) {
-            val resolved = ChestCavityInstanceFactory.resolveType(entity.type)
-            if (resolved.defaultOrganScores.isNotEmpty()) {
-                cc.type = resolved
-                ChestCavityUtil.evaluateChestCavity(cc)
-            }
+        // Fallback for a body that reached the level before the datapack types were available.
+        if (!cc.initialized) {
+            ChestCavityUtil.initializeChestCavity(cc)
         }
         ChestCavityUtil.onTick(cc)
     }

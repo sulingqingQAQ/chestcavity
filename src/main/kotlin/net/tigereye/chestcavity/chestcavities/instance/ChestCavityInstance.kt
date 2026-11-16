@@ -21,6 +21,9 @@ class ChestCavityInstance(
     var opened = false
     val inventory = ChestCavityInventory(instance = this)
 
+    /** True once a full evaluation (scores + attribute modifiers) has been performed at least once. */
+    var initialized = false
+
     var oldOrganScores: Map<ResourceLocation, Float> = emptyMap()
     var organScores: Map<ResourceLocation, Float>
         get() = _organScores
@@ -67,7 +70,11 @@ class ChestCavityInstance(
         inventory.removeListener(this)
         if (ccTag.contains("Inventory")) inventory.readTags(ccTag.getList("Inventory", 10))
         inventory.addListener(this)
-        net.tigereye.chestcavity.util.ChestCavityUtil.evaluateChestCavity(this)
+        // Before the datapack types exist there is nothing meaningful to evaluate; leave the instance
+        // uninitialised so the first tick resolves the real type instead of freezing a fallback (L-01).
+        if (net.tigereye.chestcavity.chestcavities.types.ChestCavityTypeManager.types.isNotEmpty()) {
+            net.tigereye.chestcavity.util.ChestCavityUtil.initializeChestCavity(this)
+        }
     }
 
     fun toTag(tag: CompoundTag) {
