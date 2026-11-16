@@ -246,26 +246,79 @@ object ChestCavityUtil {
         }
     }
 
-    fun insertWelfareOrgans(cc: ChestCavityInstance) {
+    fun insertWelfareOrgans(
+        cc: ChestCavityInstance,
+        drops: MutableCollection<net.minecraft.world.entity.item.ItemEntity>? = null
+    ) {
         if (cc.organScore(CCOrganScores.HEALTH) <= 0) {
-            forcefullyAddStack(cc, ItemStack(CCItems.ROTTEN_HEART.get()), 4)
+            forcefullyAddStack(cc, ItemStack(CCItems.ROTTEN_HEART.get()), 4, drops)
         }
         if (cc.organScore(CCOrganScores.BREATH_RECOVERY) <= 0) {
-            forcefullyAddStack(cc, ItemStack(CCItems.ROTTEN_LUNG.get()), 3)
+            forcefullyAddStack(cc, ItemStack(CCItems.ROTTEN_LUNG.get()), 3, drops)
         }
         if (cc.organScore(CCOrganScores.NERVES) <= 0) {
-            forcefullyAddStack(cc, ItemStack(CCItems.ROTTEN_SPINE.get()), 13)
+            forcefullyAddStack(cc, ItemStack(CCItems.ROTTEN_SPINE.get()), 13, drops)
         }
         if (cc.organScore(CCOrganScores.STRENGTH) <= 0) {
-            forcefullyAddStack(cc, ItemStack(net.minecraft.world.item.Items.ROTTEN_FLESH, 16), 0)
+            forcefullyAddStack(cc, ItemStack(net.minecraft.world.item.Items.ROTTEN_FLESH, 16), 0, drops)
         }
     }
 
-    private fun forcefullyAddStack(cc: ChestCavityInstance, stack: ItemStack, slot: Int) {
-        if (!cc.inventory.canAddItem(stack)) {
-            cc.owner.spawnAtLocation(cc.inventory.removeItemNoUpdate(slot))
+    /**
+     * Inserts one welfare organ without ever hard-overwriting an existing item (A-10).
+     *
+     * The original asked `canAddItem` (a container-wide question) and then called `setItem` on a
+     * fixed slot, which silently replaced whatever was living there while other slots were still
+     * free. Here the stack is offered to the container first, the surplus goes to the vanilla main
+     * inventory when keepInventory keeps it, and only then is the preferred slot evicted - and even
+     * then the evicted stack is routed out through the drop collection instead of being deleted.
+     * Anything that still does not fit leaves the body the same way rather than disappearing.
+     */
+    private fun forcefullyAddStack(
+        cc: ChestCavityInstance,
+        stack: ItemStack,
+        slot: Int,
+        drops: MutableCollection<net.minecraft.world.entity.item.ItemEntity>?
+    ) {
+        if (stack.isEmpty) return
+        var remainder = cc.inventory.addItem(stack)
+
+        if (!remainder.isEmpty) {
+            val owner = cc.owner
+            if (owner is net.minecraft.world.entity.player.Player &&
+                owner.level().gameRules.getBoolean(net.minecraft.world.level.GameRules.RULE_KEEPINVENTORY)
+            ) {
+                // Vanilla keeps the main inventory: let it absorb the surplus before touching the body.
+                if (owner.inventory.add(remainder)) return
+            }
         }
-        cc.inventory.setItem(slot, stack)
+
+        if (!remainder.isEmpty && slot in 0 until cc.inventory.containerSize) {
+            // The cavity is full: evict only the preferred slot, preserving what was there.
+            val evicted = cc.inventory.removeItemNoUpdate(slot)
+            if (!evicted.isEmpty) collectDrop(cc, evicted, drops)
+            remainder = cc.inventory.addItem(remainder)
+        }
+
+        if (!remainder.isEmpty) collectDrop(cc, remainder, drops)
+    }
+
+    /** Routes an item out of the body: into the platform drop collection when there is one (L-03). */
+    private fun collectDrop(
+        cc: ChestCavityInstance,
+        stack: ItemStack,
+        drops: MutableCollection<net.minecraft.world.entity.item.ItemEntity>?
+    ) {
+        if (stack.isEmpty) return
+        if (drops == null) {
+            cc.owner.spawnAtLocation(stack)
+            return
+        }
+        val itemEntity = net.minecraft.world.entity.item.ItemEntity(
+            cc.owner.level(), cc.owner.x, cc.owner.y, cc.owner.z, stack
+        )
+        itemEntity.setDefaultPickUpDelay()
+        drops.add(itemEntity)
     }
 
     private const val SHULKER_DILUTION = 1f / 27f
