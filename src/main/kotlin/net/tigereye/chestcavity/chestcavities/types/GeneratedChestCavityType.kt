@@ -91,8 +91,11 @@ class GeneratedChestCavityType(
             val rolls = 3 + random.nextInt(2 + looting) + random.nextInt(2 + looting)
             drawOrgansFromPile(organPool, rolls, random, drops)
         } else {
-            val chance = net.tigereye.chestcavity.CCConfig.UNIVERSAL_DONOR_RATE.get().toFloat() +
-                net.tigereye.chestcavity.CCConfig.ORGAN_BUNDLE_LOOTING_BOOST.get().toFloat() * looting
+            // A-06: the per-type dropRateMultiplier scales the ordinary branch, exactly like the
+            // original ((donorRate + lootingBoost * looting) * dropRateMultiplier). The boss branch
+            // stays an independent guaranteed drop and is not scaled. chance >= 1 still always hits.
+            val chance = (net.tigereye.chestcavity.CCConfig.UNIVERSAL_DONOR_RATE.get().toFloat() +
+                net.tigereye.chestcavity.CCConfig.ORGAN_BUNDLE_LOOTING_BOOST.get().toFloat() * looting) * dropRateMultiplier
             if (random.nextFloat() < chance) {
                 val rolls = 1 + random.nextInt(3) + random.nextInt(3)
                 drawOrgansFromPile(organPool, rolls, random, drops)
