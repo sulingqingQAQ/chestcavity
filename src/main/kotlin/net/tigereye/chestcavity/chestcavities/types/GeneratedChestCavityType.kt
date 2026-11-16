@@ -126,14 +126,17 @@ class GeneratedChestCavityType(
     }
 
     override fun setOrganCompatibility(instance: ChestCavityInstance) {
-        instance.compatibilityId = instance.owner.uuid
+        // L-02: never overwrite the body generation id. It is owned by the instance and is only
+        // replaced when the death policy decides to build a new body; here we merely stamp it onto
+        // the organs so an organ can be recognised as "mine" for this body only.
+        val compatibilityId = instance.compatibilityId
         val name = runCatching { instance.owner.displayName?.string ?: "" }.getOrDefault("")
         for (i in 0 until instance.inventory.containerSize) {
             val stack = instance.inventory.getItem(i)
             if (stack.isEmpty) continue
             stack.set(
                 net.tigereye.chestcavity.registration.CCDataComponents.ORGAN_COMPATIBILITY.get(),
-                net.tigereye.chestcavity.registration.OrganCompatibility(instance.compatibilityId, name)
+                net.tigereye.chestcavity.registration.OrganCompatibility(compatibilityId, name)
             )
         }
     }
