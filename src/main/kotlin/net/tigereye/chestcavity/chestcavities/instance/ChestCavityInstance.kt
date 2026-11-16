@@ -80,19 +80,6 @@ class ChestCavityInstance(
         }
     }
 
-    /**
-     * Releases transient, world-bound state that must not survive this body.
-     * Used by death and by body replacement before a clone.
-     */
-    fun releaseTransientState() {
-        projectileQueue.clear()
-        projectileCooldown = 0
-        onHitListeners.clear()
-        connectedCrystal?.setBeamTarget(null)
-        connectedCrystal = null
-        ccBeingOpened = null
-    }
-
     fun toTag(tag: CompoundTag) {
         tag.put("ChestCavity", CompoundTag().apply {
             putBoolean("opened", opened)
@@ -123,5 +110,23 @@ class ChestCavityInstance(
         inventory.removeListener(this)
         inventory.readTags(other.inventory.getTags())
         inventory.addListener(this)
+
+        // Recalculate for the final inventory/owner/body id (A-08). No network sync here: on a clone
+        // the client is being rebuilt and would drop the packet (L-04); the explicit full snapshot is
+        // sent once the new player object exists.
+        net.tigereye.chestcavity.util.ChestCavityUtil.evaluateChestCavity(this, sync = false)
+    }
+
+    /**
+     * Releases transient, world-bound state that must not survive this body.
+     * Used by death and by body replacement before a clone.
+     */
+    fun releaseTransientState() {
+        projectileQueue.clear()
+        projectileCooldown = 0
+        onHitListeners.clear()
+        connectedCrystal?.setBeamTarget(null)
+        connectedCrystal = null
+        ccBeingOpened = null
     }
 }

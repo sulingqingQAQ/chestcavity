@@ -125,14 +125,14 @@ object ChestCavityUtil {
 
     // --- Chest cavity lifecycle ---
 
-    fun evaluateChestCavity(cc: ChestCavityInstance) {
+    fun evaluateChestCavity(cc: ChestCavityInstance, sync: Boolean = true) {
         val scores = cc.organScores.toMutableMap()
         if (!cc.opened) {
             scores.clear()
             cc.type.defaultOrganScores.let { scores.putAll(it) }
             cc.organScores = scores
             cc.initialized = true
-            organUpdate(cc)
+            organUpdate(cc, sync)
             return
         }
 
@@ -167,48 +167,61 @@ object ChestCavityUtil {
 
         cc.organScores = scores
         cc.initialized = true
-        organUpdate(cc)
+        organUpdate(cc, sync)
+    }
+
+    fun organUpdate(cc: ChestCavityInstance, sync: Boolean = true) {
+        val changed = cc.oldOrganScores != cc.organScores
+        if (changed) {
+            OrganUpdateListeners.onOrganUpdate(cc.owner, cc)
+            cc.oldOrganScores = cc.organScores.toMap()
+        }
+        if (!changed || !sync) return
+        sendStateToClient(cc)
+    }
+
+    /**
+     * Pushes the full current state (opened + every organ score) to the owning player if they are
+     * a connected server player. Unlike [organUpdate] this ignores whether the score map changed,
+     * which is required after login and after an actual respawn has produced a new client entity (L-04).
+     */
+    fun sendStateToClient(cc: ChestCavityInstance) {
+        val owner = cc.owner
+        if (owner.level().isClientSide) return
+        if (owner !is net.minecraft.server.level.ServerPlayer) return
+        if (owner.connection == null) return
+        val payload = net.tigereye.chestcavity.registration.ChestCavityUpdatePayload(cc.opened, cc.organScores)
+        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(owner, payload)
     }
 
     /**
      * Resolves the datapack-defined type for this owner and performs the first full evaluation.
      * This is the single explicit "initialisation finished" point for a fresh instance (L-01).
      */
-    fun initializeChestCavity(cc: ChestCavityInstance) {
+    fun initializeChestCavity(cc: ChestCavityInstance, sync: Boolean = false) {
         cc.type = net.tigereye.chestcavity.chestcavities.instance.ChestCavityInstanceFactory.resolveType(cc.owner.type)
         // Before the datapack types are loaded there is nothing to evaluate against; stay
-        // uninitialised so the next join/tick retries instead of freezing an empty score map (L-01).
+        // uninitialised so a later tick retries instead of freezing an empty score map forever (L-01).
         if (net.tigereye.chestcavity.chestcavities.types.ChestCavityTypeManager.types.isEmpty()) return
-        evaluateChestCavity(cc)
-    }
-
-    fun organUpdate(cc: ChestCavityInstance) {
-        if (cc.oldOrganScores == cc.organScores) return
-        OrganUpdateListeners.onOrganUpdate(cc.owner, cc)
-        cc.oldOrganScores = cc.organScores.toMap()
-        // Sync to client (only if player has an active connection)
-        val owner = cc.owner
-        if (!owner.level().isClientSide && owner is net.minecraft.server.level.ServerPlayer && owner.connection != null) {
-            val payload = net.tigereye.chestcavity.registration.ChestCavityUpdatePayload(cc.opened, cc.organScores)
-            net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(owner, payload)
-        }
+        evaluateChestCavity(cc, sync)
     }
 
     fun openChestCavity(cc: ChestCavityInstance): ChestCavityInventory {
         if (cc.opened) return cc.inventory
         cc.inventory.removeListener(cc)
         cc.opened = true
+        // Fills the default inventory, tags it with the body id, then re-evaluates (L-01).
         generateChestCavityIfOpened(cc)
         cc.inventory.addListener(cc)
         return cc.inventory
     }
 
-    fun generateChestCavityIfOpened(cc: ChestCavityInstance) {
+    fun generateChestCavityIfOpened(cc: ChestCavityInstance, sync: Boolean = true) {
         if (!cc.opened) return
         cc.type.fillChestCavityInventory(cc.inventory)
         cc.type.setOrganCompatibility(cc)
         // Recalculate from the freshly generated inventory so the terminal state is correct (L-01).
-        evaluateChestCavity(cc)
+        evaluateChestCavity(cc, sync)
     }
 
     // --- On-hit ---
@@ -272,7 +285,7 @@ object ChestCavityUtil {
                 // evaluated (and never pushed to the dying client).
                 cc.inventory.removeListener(cc)
                 try {
-                    generateChestCavityIfOpened(cc)
+                    generateChestCavityIfOpened(cc, sync = false)
                 } finally {
                     cc.inventory.addListener(cc)
                 }
@@ -284,7 +297,7 @@ object ChestCavityUtil {
         }
         // KEEP_CHEST_CAVITY keeps the current body, its inventory and its id untouched (A-09).
         insertWelfareOrgans(cc, drops)
-        evaluateChestCavity(cc)
+        evaluateChestCavity(cc, sync = false)
     }
 
     /**
@@ -307,7 +320,7 @@ object ChestCavityUtil {
             if (compat.ownerUuid != accountId) continue
             stack.set(componentType, compat.copy(ownerUuid = bodyId))
         }
-        evaluateChestCavity(cc)
+        evaluateChestCavity(cc, sync = false)
     }
 
     /**
@@ -328,7 +341,7 @@ object ChestCavityUtil {
             cc.inventory.addListener(cc)
         }
         // The scores must reflect the shed organs before anything (welfare) is decided on them (A-15).
-        evaluateChestCavity(cc)
+        evaluateChestCavity(cc, sync = false)
     }
 
     fun insertWelfareOrgans(
@@ -350,14 +363,13 @@ object ChestCavityUtil {
     }
 
     /**
-     * Inserts one welfare organ without ever hard-overwriting an existing item (A-10).
+     * Adds a welfare organ without ever overwriting an existing stack (A-10).
      *
-     * The original asked `canAddItem` (a container-wide question) and then called `setItem` on a
-     * fixed slot, which silently replaced whatever was living there while other slots were still
-     * free. Here the stack is offered to the container first, the surplus goes to the vanilla main
-     * inventory when keepInventory keeps it, and only then is the preferred slot evicted - and even
-     * then the evicted stack is routed out through the drop collection instead of being deleted.
-     * Anything that still does not fit leaves the body the same way rather than disappearing.
+     * Order matches the original: merge into partial stacks / use an empty slot first; only when the
+     * cavity cannot take the stack at all is the preferred slot's occupant removed, and that occupant
+     * is preserved by routing it into the drop collection. Players with the vanilla keepInventory
+     * gamerule get a main-inventory attempt before any body slot is disturbed. Anything that still
+     * does not fit is dropped rather than silently discarded.
      */
     private fun forcefullyAddStack(
         cc: ChestCavityInstance,

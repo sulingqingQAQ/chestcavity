@@ -30,7 +30,7 @@ object CCEvents {
      * The instance is created in the [net.minecraft.world.entity.LivingEntity] constructor, far too
      * early to resolve datapack types or to touch attributes. This event fires once the entity is
      * fully constructed and is being added to a level, which is the first moment the body exists as a
-     * real thing - and unlike the tick path it does not depend on a player keeping the chunk alive,
+     * real thing — and unlike the tick path it does not depend on a player keeping the chunk alive,
      * so a summoned or scripted body is never left with an empty score map (L-01).
      */
     @SubscribeEvent
@@ -51,6 +51,11 @@ object CCEvents {
         // Fallback for a body that reached the level before the datapack types were available.
         if (!cc.initialized) {
             ChestCavityUtil.initializeChestCavity(cc)
+        }
+        // A body that is plainly alive again was resurrected after a committed death (totem-like
+        // effects, other mods): the next death is a new transaction and must commit on its own.
+        if (cc.deathCommitted && !cc.owner.isDeadOrDying) {
+            cc.deathCommitted = false
         }
         ChestCavityUtil.onTick(cc)
     }
@@ -139,13 +144,31 @@ object CCEvents {
         ChestCavityUtil.commitDeath(cce.chestCavityInstance, event.drops)
     }
 
+    /**
+     * Body hand-over on clone.
+     *
+     * The original always copied the instance here, for every clone path: the death transaction has
+     * already decided what the new body looks like (rebuild under a fresh id, or keep the old one), and
+     * the clone is what carries that decided body to the final respawn instance. Splitting this on
+     * KEEP_CHEST_CAVITY here (as the fork did) drops the whole body — inventory, opened state, body id
+     * and scores — on the default death path, which no later tick can repair (A-08 / L-01 / L-02).
+     */
     @SubscribeEvent
     fun onPlayerClone(event: PlayerEvent.Clone) {
         val oldCce = ChestCavityEntity.of(event.original) ?: return
         val newCce = ChestCavityEntity.of(event.entity) ?: return
-        if (CCConfig.KEEP_CHEST_CAVITY.get() || event.isWasDeath.not()) {
-            newCce.chestCavityInstance.copyFrom(oldCce.chestCavityInstance)
-        }
+        // Copies the decided body (incl. its body id) and re-evaluates for the new owner (A-08).
+        newCce.chestCavityInstance.copyFrom(oldCce.chestCavityInstance)
+    }
+
+    /**
+     * After an actual respawn the client has just built a brand new player object, so the state it
+     * holds is whatever the server sends now — not the packet that was sent during the clone (L-04).
+     */
+    @SubscribeEvent
+    fun onPlayerRespawn(event: net.neoforged.neoforge.event.entity.player.PlayerEvent.PlayerRespawnEvent) {
+        val cce = ChestCavityEntity.of(event.entity) ?: return
+        ChestCavityUtil.sendStateToClient(cce.chestCavityInstance)
     }
 
     @SubscribeEvent
