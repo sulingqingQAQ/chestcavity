@@ -9,6 +9,7 @@ import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
+import net.neoforged.neoforge.event.entity.living.LivingFallEvent
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent
 import net.neoforged.neoforge.event.entity.living.MobEffectEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
@@ -110,6 +111,14 @@ object CCEvents {
         }
 
         event.amount = damage
+    }
+
+    // Fall distance is the value LivingFallEvent feeds into vanilla fall-damage calculation.
+    @SubscribeEvent
+    fun onLivingFall(event: LivingFallEvent) {
+        if (event.distance <= 0f) return
+        val cc = ChestCavityEntity.of(event.entity)?.chestCavityInstance ?: return
+        event.distance *= 1f - cc.organScore(CCOrganScores.BUOYANT) / 3f
     }
 
     // --- Damage: apply on-hit from ATTACKER ---
