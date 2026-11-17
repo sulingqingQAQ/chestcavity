@@ -18,6 +18,7 @@
   "supported_items": "#minecraft:enchantable/sword",
   "weight": 1,
   "exclusive_set": [
-    "chestcavity:tomophobia"
+    "chestcavity:tomophobia",
+    "minecraft:looting"
   ]
 }

@@ -141,8 +141,14 @@ object LootListeners {
      * Port of the original cleaver butchering (LootRegister#ModifyLoot): every salvageable drop is
      * pooled per salvage recipe and replaced by that recipe's output, `count / required` times.
      *
-     * One deliberate difference: the original threw away whatever did not fill a whole unit (a single
-     * muscle where four make one meat simply vanished). Here those leftovers stay as they were.
+     * Two deliberate differences:
+     * - The original threw away whatever did not fill a whole unit (a single muscle where four make one
+     *   meat simply vanished). Here those leftovers stay as they were.
+     * - The original took the first matching recipe in recipe-manager order, so an item matched by two
+     *   recipes (human and insect intestines are both organ meat and sausage skin) came out as either,
+     *   depending on load order. Here the most specific recipe wins: the one whose ingredient accepts
+     *   the fewest items, then the lowest recipe id. Intestines therefore always become sausage skin,
+     *   like every other intestine.
      */
     private fun salvage(
         level: ServerLevel,
@@ -150,7 +156,11 @@ object LootListeners {
         drops: MutableCollection<ItemEntity>,
         candidates: List<ItemEntity>,
     ) {
-        val recipes = level.recipeManager.recipes.mapNotNull { it.value() as? SalvageRecipe }
+        val recipes = level.recipeManager.recipes
+            .mapNotNull { holder -> (holder.value() as? SalvageRecipe)?.let { holder.id() to it } }
+            .filter { (_, recipe) -> recipe.required > 0 }
+            .sortedWith(compareBy({ (_, recipe) -> recipe.input.items.size }, { (id, _) -> id.toString() }))
+            .map { it.second }
         if (recipes.isEmpty()) return
 
         val pools = LinkedHashMap<SalvageRecipe, MutableList<ItemEntity>>()
