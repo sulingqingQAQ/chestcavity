@@ -186,8 +186,9 @@ object OrganActivationListeners {
 
         val baseDuration = CCConfig.RUMINATION_TIME.get() * CCConfig.RUMINATION_GRASS_PER_SQUARE.get()
         val maxDuration = (baseDuration * CCConfig.RUMINATION_SQUARES_PER_STOMACH.get() * grazing).toInt()
-        val currentDuration = entity.getEffect(CCStatusEffects.RUMINATING)?.duration ?: 0
-        val newDuration = (currentDuration + baseDuration).coerceAtMost(maxDuration)
+        // Original: only an ongoing rumination is capped; a fresh one always starts at the base duration.
+        val ruminating = entity.getEffect(CCStatusEffects.RUMINATING)
+        val newDuration = if (ruminating != null) (ruminating.duration + baseDuration).coerceAtMost(maxDuration) else baseDuration
 
         entity.addEffect(MobEffectInstance(
             CCStatusEffects.RUMINATING, newDuration, 0, false, false, true
