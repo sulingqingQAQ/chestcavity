@@ -1,5 +1,6 @@
 package net.tigereye.chestcavity.listeners
 
+import net.minecraft.tags.ItemTags
 import net.minecraft.world.entity.player.Player
 import net.minecraft.world.food.FoodProperties
 import net.minecraft.world.item.ItemStack
@@ -47,7 +48,7 @@ object OrganFoodListeners {
     }
 
     private fun applyHerbivorousCarnivorous(stack: ItemStack, cc: ChestCavityInstance, efs: EffectiveFoodScores) {
-        val isMeat = stack.`is`(CCTags.CARNIVORE_FOOD)
+        val isMeat = stack.`is`(ItemTags.MEAT) || stack.`is`(CCTags.CARNIVORE_FOOD)
         if (isMeat) {
             efs.digestion += cc.organScore(CCOrganScores.CARNIVOROUS_DIGESTION)
             efs.nutrition += cc.organScore(CCOrganScores.CARNIVOROUS_NUTRITION)
