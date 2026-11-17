@@ -9,7 +9,6 @@ import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
-import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent
 import net.neoforged.neoforge.event.entity.living.MobEffectEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
@@ -182,15 +181,13 @@ object CCEvents {
     }
 
     /**
-     * COMMON config is not necessarily loaded when FoodProperties are registered. Apply human-meat
-     * prion effects after consumption, when the current config value is available.
+     * Called from the shared LivingEntity.eat(Level, ItemStack, FoodProperties) path so normal
+     * players and direct AI consumers (such as Fox.finishUsingItem) get one server-side roll.
      */
-    @SubscribeEvent
-    fun onHumanFoodFinished(event: LivingEntityUseItemEvent.Finish) {
-        val entity = event.entity
+    fun applyHumanFoodPrionRisk(entity: LivingEntity, food: net.minecraft.world.item.ItemStack) {
         if (entity.level().isClientSide) return
 
-        val amplifier = when (event.item.item) {
+        val amplifier = when (food.item) {
             CCItems.HUMAN_MUSCLE.get(),
             CCItems.RAW_MAN_MEAT.get(),
             CCItems.HUMAN_APPENDIX.get(),

@@ -3,6 +3,8 @@ package net.tigereye.chestcavity.mixin;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.food.FoodProperties;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.tigereye.chestcavity.events.CCEvents;
@@ -16,6 +18,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.ModifyVariable;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(LivingEntity.class)
 public abstract class MixinLivingEntity implements ChestCavityEntity {
@@ -39,6 +42,16 @@ public abstract class MixinLivingEntity implements ChestCavityEntity {
     @Override
     public void setChestCavityInstance(@NotNull ChestCavityInstance instance) {
         chestcavity$instance = instance;
+    }
+
+    /**
+     * LivingEntity.eat(Level, ItemStack, FoodProperties) is shared by ordinary finish-use eating
+     * and direct consumers such as Fox.aiStep -> ItemStack.finishUsingItem. Player.eat invokes
+     * super.eat exactly once, so HEAD applies prion risk once before the food stack is consumed.
+     */
+    @Inject(method = "eat(Lnet/minecraft/world/level/Level;Lnet/minecraft/world/item/ItemStack;Lnet/minecraft/world/food/FoodProperties;)Lnet/minecraft/world/item/ItemStack;", at = @At("HEAD"))
+    private void chestcavity$applyHumanFoodPrionRisk(Level level, ItemStack food, FoodProperties properties, CallbackInfoReturnable<ItemStack> cir) {
+        CCEvents.INSTANCE.applyHumanFoodPrionRisk((LivingEntity) (Object) this, food);
     }
 
     @Inject(method = "readAdditionalSaveData", at = @At("TAIL"))
