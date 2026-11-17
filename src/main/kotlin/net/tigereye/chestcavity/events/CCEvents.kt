@@ -341,8 +341,9 @@ object CCEvents {
             return
         }
 
-        // Shearing: if using shears on an entity with silk organs, produce silk
-        if (stack.`is`(net.minecraft.world.item.Items.SHEARS)) {
+        // The Fabric shear hook only runs for a successful Sheep shear.
+        if (stack.`is`(net.minecraft.world.item.Items.SHEARS) && target is net.minecraft.world.entity.animal.Sheep) {
+            if (target.level().isClientSide || !target.readyForShearing()) return
             val cce = ChestCavityEntity.of(target) ?: return
             val cc = cce.chestCavityInstance
             if (!cc.opened) return
@@ -358,15 +359,18 @@ object CCEvents {
             return
         }
 
-        // Milking: if using bucket on a cow-like entity, produce silk
-        if (stack.`is`(net.minecraft.world.item.Items.BUCKET) && target is net.minecraft.world.entity.animal.Cow) {
+        // The Fabric milking hook is limited to an adult cow using a bucket.
+        if (stack.`is`(net.minecraft.world.item.Items.BUCKET) &&
+            target is net.minecraft.world.entity.animal.Cow && !target.isBaby
+        ) {
+            if (target.level().isClientSide) return
             val cce = ChestCavityEntity.of(target) ?: return
             val cc = cce.chestCavityInstance
             if (!cc.opened) return
             val silk = cc.organScore(CCOrganScores.SILK)
             if (silk <= 0) return
             if (target.hasEffect(net.tigereye.chestcavity.registration.CCStatusEffects.SILK_COOLDOWN)) return
-            net.tigereye.chestcavity.util.OrganUtil.spinWeb(target, cc, silk)
+            if (!net.tigereye.chestcavity.util.OrganUtil.spinWeb(target, cc, silk)) return
             target.addEffect(net.minecraft.world.effect.MobEffectInstance(
                 net.tigereye.chestcavity.registration.CCStatusEffects.SILK_COOLDOWN,
                 CCConfig.SILK_COOLDOWN.get(), 0, false, false, true
