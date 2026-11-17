@@ -60,11 +60,11 @@ object LootListeners {
         // are excluded here so a cleaver kill never butchers somebody's implant.
         if (entity is Player || killer == null) return
         val level = entity.level() as? ServerLevel ?: return
-        val loot =event.drops.filter { drop -> bodyOrgans.none { it === drop } }
+        val loot = event.drops.filter { drop -> bodyOrgans.none { it === drop } }
 
         if (weapon.`is`(CCTags.BUTCHERING_TOOL)) {
-            val salvageable = if (CCConfig.CLEAVER_SALVAGES_ORGAN_BUNDLE.get()) loot
-                else loot.filter { drop -> bundle.none { it === drop } }
+            val spared = sparedBundleOrgans(level, weapon, bundle)
+            val salvageable = loot.filter { drop -> spared.none { it === drop } }
             salvage(level, entity, event.drops, salvageable)
         }
 
@@ -120,6 +120,21 @@ object LootListeners {
         }
         event.drops.addAll(added)
         return added
+    }
+
+    /**
+     * The bundle organs a cleaver leaves whole. By default (the original behaviour) none: the bundle is
+     * butchered like every other drop. With cleaver_salvages_organ_bundle off, all of them. With
+     * surgical_spares_organs on, each bundle stack independently escapes with chance Surgical level / 3,
+     * so level 3 and above keeps the whole bundle.
+     */
+    private fun sparedBundleOrgans(level: ServerLevel, weapon: ItemStack, bundle: List<ItemEntity>): List<ItemEntity> {
+        if (bundle.isEmpty()) return emptyList()
+        if (!CCConfig.CLEAVER_SALVAGES_ORGAN_BUNDLE.get()) return bundle
+        if (!CCConfig.SURGICAL_SPARES_ORGANS.get()) return emptyList()
+        val surgical = CCEnchantments.level(weapon, CCEnchantments.SURGICAL, level)
+        if (surgical <= 0) return emptyList()
+        return bundle.filter { level.random.nextInt(3) < surgical }
     }
 
     /**
