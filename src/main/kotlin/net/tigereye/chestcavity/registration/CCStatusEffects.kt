@@ -119,6 +119,10 @@ class FurnacePowerEffect : MobEffect(MobEffectCategory.BENEFICIAL, 0xC8FF00) {
 }
 
 object CCDamageTypes {
+    val HEARTBLEED: ResourceKey<DamageType> = ResourceKey.create(
+        Registries.DAMAGE_TYPE,
+        ResourceLocation.fromNamespaceAndPath(ChestCavity.MODID, "heartbleed")
+    )
     val ORGAN_REJECTION: ResourceKey<DamageType> = ResourceKey.create(
         Registries.DAMAGE_TYPE,
         ResourceLocation.fromNamespaceAndPath(ChestCavity.MODID, "organ_rejection")

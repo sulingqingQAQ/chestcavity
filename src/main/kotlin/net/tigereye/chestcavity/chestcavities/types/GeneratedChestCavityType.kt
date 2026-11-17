@@ -43,7 +43,7 @@ class GeneratedChestCavityType(
     }
 
     override val heartBleedCap: Float
-        get() = if (bossChestCavity) 300f else 4f
+        get() = if (bossChestCavity) 5f else Float.MAX_VALUE
 
     override fun getDefaultChestCavity(): ChestCavityInventory = defaultInventory
 

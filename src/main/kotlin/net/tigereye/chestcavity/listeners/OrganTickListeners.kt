@@ -7,6 +7,7 @@ import net.minecraft.world.entity.monster.Creeper
 import net.minecraft.world.entity.player.Player
 import net.tigereye.chestcavity.CCConfig
 import net.tigereye.chestcavity.chestcavities.instance.ChestCavityInstance
+import net.tigereye.chestcavity.registration.CCDamageTypes
 import net.tigereye.chestcavity.registration.CCOrganScores
 import net.tigereye.chestcavity.registration.CCStatusEffects
 import net.tigereye.chestcavity.util.ChestCavityUtil
@@ -55,14 +56,16 @@ object OrganTickListeners {
 
     private fun tickHealth(entity: LivingEntity, cc: ChestCavityInstance) {
         val defaultHealth = cc.type.getDefaultOrganScore(CCOrganScores.HEALTH)
-        if (defaultHealth == 0f) return
-        if (cc.organScore(CCOrganScores.HEALTH) > 0) {
+        if (defaultHealth == 0f || cc.organScore(CCOrganScores.HEALTH) > 0f) {
             cc.heartBleedTimer = 0
             return
         }
         if (entity.level().gameTime % CCConfig.HEARTBLEED_RATE.get() != 0L) return
         cc.heartBleedTimer++
-        entity.hurt(entity.damageSources().starve(), min(cc.heartBleedTimer.toFloat(), cc.type.heartBleedCap))
+        entity.hurt(
+            entity.damageSources().source(CCDamageTypes.HEARTBLEED),
+            min(cc.heartBleedTimer.toFloat(), cc.type.heartBleedCap)
+        )
     }
 
     private fun tickFiltration(entity: LivingEntity, cc: ChestCavityInstance) {
