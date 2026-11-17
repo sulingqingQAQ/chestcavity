@@ -2,11 +2,14 @@ package net.tigereye.chestcavity.events
 
 import net.minecraft.tags.DamageTypeTags
 import net.minecraft.world.damagesource.DamageTypes
+import net.minecraft.world.effect.MobEffectInstance
+import net.minecraft.world.effect.MobEffects
 import net.minecraft.world.entity.LivingEntity
 import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
+import net.neoforged.neoforge.event.entity.living.LivingEntityUseItemEvent
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent
 import net.neoforged.neoforge.event.entity.living.MobEffectEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
@@ -15,6 +18,7 @@ import net.neoforged.neoforge.event.tick.EntityTickEvent
 import net.tigereye.chestcavity.CCConfig
 import net.tigereye.chestcavity.ChestCavity
 import net.tigereye.chestcavity.chestcavities.ChestCavityEntity
+import net.tigereye.chestcavity.registration.CCItems
 import net.tigereye.chestcavity.registration.CCOrganScores
 import net.tigereye.chestcavity.util.ChestCavityUtil
 import net.tigereye.chestcavity.util.OrganUtil
@@ -175,6 +179,47 @@ object CCEvents {
     fun onPlayerBreakSpeed(event: PlayerEvent.BreakSpeed) {
         val cce = ChestCavityEntity.of(event.entity) ?: return
         event.newSpeed = ChestCavityUtil.applyNervesToMining(cce.chestCavityInstance, event.newSpeed)
+    }
+
+    /**
+     * COMMON config is not necessarily loaded when FoodProperties are registered. Apply human-meat
+     * prion effects after consumption, when the current config value is available.
+     */
+    @SubscribeEvent
+    fun onHumanFoodFinished(event: LivingEntityUseItemEvent.Finish) {
+        val entity = event.entity
+        if (entity.level().isClientSide) return
+
+        val amplifier = when (event.item.item) {
+            CCItems.HUMAN_MUSCLE.get(),
+            CCItems.RAW_MAN_MEAT.get(),
+            CCItems.HUMAN_APPENDIX.get(),
+            CCItems.HUMAN_HEART.get(),
+            CCItems.HUMAN_INTESTINE.get(),
+            CCItems.HUMAN_KIDNEY.get(),
+            CCItems.HUMAN_LIVER.get(),
+            CCItems.HUMAN_LUNG.get(),
+            CCItems.HUMAN_SPLEEN.get(),
+            CCItems.HUMAN_STOMACH.get(),
+            CCItems.RAW_HUMAN_ORGAN_MEAT.get(),
+            CCItems.RAW_HUMAN_SAUSAGE.get(),
+            CCItems.RAW_RICH_HUMAN_SAUSAGE.get() -> 1
+
+            CCItems.COOKED_MAN_MEAT.get(),
+            CCItems.COOKED_HUMAN_ORGAN_MEAT.get(),
+            CCItems.COOKED_HUMAN_SAUSAGE.get(),
+            CCItems.COOKED_RICH_HUMAN_SAUSAGE.get() -> 0
+
+            else -> return
+        }
+
+        val chance = CCConfig.RISK_OF_PRIONS.get().toFloat()
+        val effects = arrayOf(MobEffects.MOVEMENT_SLOWDOWN, MobEffects.DIG_SLOWDOWN, MobEffects.WEAKNESS)
+        for (effect in effects) {
+            if (entity.random.nextFloat() < chance) {
+                entity.addEffect(MobEffectInstance(effect, 24000, amplifier))
+            }
+        }
     }
 
     // --- Status effect modification (rotgut/kidneys/liver/buff purging) ---
