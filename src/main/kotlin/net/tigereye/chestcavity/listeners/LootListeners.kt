@@ -46,6 +46,10 @@ object LootListeners {
             }
         }
 
+        // Take (and release) what the death transaction shed from the body during this drops phase.
+        val bodyOrgans = cc.deathDrops
+        cc.deathDrops = emptyList()
+
         val killer = event.source.entity as? LivingEntity
         val weapon = killer?.mainHandItem ?: ItemStack.EMPTY
         val bundle = rollOrganBundle(event, entity, cc, killer, weapon)
@@ -56,8 +60,7 @@ object LootListeners {
         // are excluded here so a cleaver kill never butchers somebody's implant.
         if (entity is Player || killer == null) return
         val level = entity.level() as? ServerLevel ?: return
-        val bodyOrgans = cc.deathDrops
-        val loot = event.drops.filter { drop -> bodyOrgans.none { it === drop } }
+        val loot =event.drops.filter { drop -> bodyOrgans.none { it === drop } }
 
         if (weapon.`is`(CCTags.BUTCHERING_TOOL)) {
             val salvageable = if (CCConfig.CLEAVER_SALVAGES_ORGAN_BUNDLE.get()) loot
