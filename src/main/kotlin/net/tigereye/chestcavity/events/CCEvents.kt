@@ -234,12 +234,12 @@ object CCEvents {
     // cancelled application never reaches the effect map and addEffect then
     // correctly reports failure to the caller.
     //
-    // Duration shortening no longer goes through Applicable + re-entry (R2): it
+    // Duration adjustment no longer goes through Applicable + re-entry (R2): it
     // rewrites the instance via a mixin that swaps the addEffect parameter at
     // HEAD (the original mod did the same with ModifyVariable on
     // addStatusEffect). That keeps addEffect's return value true so /effect
     // still reports success, preserves the source entity, and lets vanilla's
-    // own merge path handle the shortened instance. No re-entry flag exists
+    // own merge path handle the adjusted instance. No re-entry flag exists
     // anymore, so there is nothing to go stale (R3).
 
     @SubscribeEvent
@@ -261,8 +261,8 @@ object CCEvents {
     }
 
     /**
-     * Returns a shortened copy of [effect] for entities whose organs shorten
-     * durations, or null when no shortening applies. Called from the
+     * Returns a duration-adjusted copy of [effect] for entities whose organs
+     * change durations, or null when no adjustment applies. Called from the
      * addEffect-parameter mixin; infinite durations are left untouched instead
      * of being cut to 1 tick.
      */
@@ -281,11 +281,12 @@ object CCEvents {
             if (filtration > defaultFiltration && defaultFiltration > 0) {
                 factor *= (2f / (1f + filtration / defaultFiltration)).coerceIn(0.01f, 1f)
             }
-            // Detoxification (liver)
+            // Detoxification (liver): scores below default extend harmful effects.
             val detox = cc.organScore(CCOrganScores.DETOXIFICATION)
             val defaultDetox = cc.type.getDefaultOrganScore(CCOrganScores.DETOXIFICATION)
-            if (detox > defaultDetox && detox > 0) {
-                factor *= (2f / (1f + detox / defaultDetox)).coerceIn(0.01f, 1f)
+            if (defaultDetox > 0f && detox != defaultDetox) {
+                val detoxRatio = detox / defaultDetox
+                factor *= 2f / (1f + detoxRatio)
             }
         }
 
@@ -305,7 +306,7 @@ object CCEvents {
             }
         }
 
-        if (factor >= 1f || effect.isInfiniteDuration) return null
+        if (factor == 1f || effect.isInfiniteDuration) return null
         val newDuration = (effect.duration * factor).toInt().coerceAtLeast(1)
 
         // MobEffectInstance has no public duration setter, so rebuild it from
