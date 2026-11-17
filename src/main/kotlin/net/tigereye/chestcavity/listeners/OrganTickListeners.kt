@@ -127,19 +127,24 @@ object OrganTickListeners {
         if (entity.level().isClientSide) return
         val crystalsynthesis = cc.organScore(CCOrganScores.CRYSTALSYNTHESIS)
 
-        // If connected crystal was destroyed, deal damage
+        // Keep the existing beam attached, or explicitly clear it if this organ is gone.
         val crystal = cc.connectedCrystal
         if (crystal != null) {
             if (crystal.isRemoved) {
                 entity.hurt(entity.damageSources().starve(), crystalsynthesis * 2)
                 cc.connectedCrystal = null
-            } else if (crystalsynthesis == 0f) {
+            } else if (crystalsynthesis != 0f) {
+                crystal.setBeamTarget(entity.blockPosition().below(2))
+            } else {
+                crystal.setBeamTarget(null)
                 cc.connectedCrystal = null
             }
         }
 
-        if (crystalsynthesis <= 0) return
-        if (entity.level().gameTime % CCConfig.CRYSTALSYNTHESIS_FREQUENCY.get() != 0L) return
+        if (crystalsynthesis == 0f || entity is net.minecraft.world.entity.boss.enderdragon.EnderDragon) return
+        val gameTime = entity.level().gameTime
+        val frequency = CCConfig.CRYSTALSYNTHESIS_FREQUENCY.get().toLong()
+        if (gameTime % frequency != 0L) return
 
         // Find nearest end crystal
         val range = CCConfig.CRYSTALSYNTHESIS_RANGE.get().toDouble()
@@ -161,7 +166,14 @@ object OrganTickListeners {
         if (entity is net.minecraft.world.entity.player.Player) {
             val food = entity.foodData
             when {
-                food.needsFood() -> food.eat(1, 0f)
+                food.needsFood() -> {
+                    val hungerCycle = frequency * 5L
+                    if (crystalsynthesis >= 5f ||
+                        (gameTime % hungerCycle).toFloat() < frequency.toFloat() * crystalsynthesis
+                    ) {
+                        food.eat(1, 0f)
+                    }
+                }
                 food.saturationLevel < food.foodLevel -> food.eat(1, crystalsynthesis / 10f)
                 else -> entity.heal(crystalsynthesis / 5f)
             }
