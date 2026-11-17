@@ -46,6 +46,11 @@ class ChestCavityInstance(
     var photosynthesisProgress = 0
     var connectedCrystal: EndCrystal? = null
     var ccBeingOpened: ChestCavityInstance? = null
+    /**
+     * Item entities the death transaction shed from this body during the current drops phase. Not
+     * persisted: it only tells the later loot listeners which drops are implants, not mob loot.
+     */
+    var deathDrops: List<net.minecraft.world.entity.item.ItemEntity> = emptyList()
 
     fun organScore(id: ResourceLocation): Float = _organScores.getOrDefault(id, 0f)
     fun oldOrganScore(id: ResourceLocation): Float = oldOrganScores.getOrDefault(id, 0f)

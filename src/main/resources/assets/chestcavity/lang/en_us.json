@@ -356,6 +356,7 @@
     "rei.chestcavity.salvage_recipe": "Salvaging",
     "text.chestcavity.tooltip.compatible_with": "Only Compatible With: %s",
     "text.chestcavity.tooltip.safe_to_use": "Safe to Use",
+    "text.chestcavity.tooltip.unsafe_to_use": "Unsafe to Use",
     "text.chestcavity.tooltip.creeper_appendix.fuse": "This appears to be a fuse.",
     "text.chestcavity.tooltip.creeper_appendix.by_itself": "It won't do much by itself.",
     "text.autoconfig.chestcavity.title": "Chest Cavity",

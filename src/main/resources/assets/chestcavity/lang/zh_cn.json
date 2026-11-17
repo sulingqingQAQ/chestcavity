@@ -356,6 +356,7 @@
     "rei.chestcavity.salvage_recipe": "器官拆解",
     "text.chestcavity.tooltip.compatible_with": "原装宿主限定：%s",
     "text.chestcavity.tooltip.safe_to_use": "无排异风险（放心往里塞）",
+    "text.chestcavity.tooltip.unsafe_to_use": "庸医经手（塞进去必排异）",
     "text.chestcavity.tooltip.creeper_appendix.fuse": "这玩意儿看着像根导火索。",
     "text.chestcavity.tooltip.creeper_appendix.by_itself": "光靠它自己还听不到响。",
     "text.autoconfig.chestcavity.title": "胸腔",
