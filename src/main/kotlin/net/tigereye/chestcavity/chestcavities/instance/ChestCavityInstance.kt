@@ -41,6 +41,8 @@ class ChestCavityInstance(
     var liverTimer = 0
     var metabolismRemainder = 0f
     var lungRemainder = 0f
+    /** Transient per-instance marker for suppressing bubbles after custom drowning. */
+    var suppressBreathingBubbles = false
     var projectileCooldown = 0
     var furnaceProgress = 0
     var photosynthesisProgress = 0

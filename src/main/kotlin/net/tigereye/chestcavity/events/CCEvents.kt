@@ -352,14 +352,12 @@ object CCEvents {
 
     // --- Breath/air modification ---
     // CommonHooks posts LivingDrownEvent synchronously after LivingBreatheEvent.
-    private var breathingFormulaEntityThisTick: LivingEntity? = null
-
     @SubscribeEvent
     fun onLivingBreathe(event: net.neoforged.neoforge.event.entity.living.LivingBreatheEvent) {
-        breathingFormulaEntityThisTick = null
         val entity = event.entity
         val cce = ChestCavityEntity.of(entity) ?: return
         val cc = cce.chestCavityInstance
+        cc.suppressBreathingBubbles = false
         if (!cc.opened) return
 
         val defaultCapacity = cc.type.getDefaultOrganScore(CCOrganScores.BREATH_CAPACITY)
@@ -401,7 +399,7 @@ object CCEvents {
             val airAfterBreathing = minOf(air - airLoss.toInt(), maxAir)
             if (airAfterBreathing <= -20) cc.lungRemainder = 0f
             setBreathingAirTarget(event, air, airAfterBreathing, airLoss)
-            breathingFormulaEntityThisTick = entity
+            cc.suppressBreathingBubbles = true
         } else {
             // Match applyBreathOnLand's three-score default guard, including gill-only bodies.
             if (recovery == defaultRecovery && capacity == defaultCapacity && waterbreath == defaultWaterbreath) return
@@ -436,7 +434,7 @@ object CCEvents {
             val airAfterBreathing = minOf(airAfterVanillaRefill - airLoss.toInt() - airGain, maxAir)
             if (airAfterBreathing <= -20) cc.lungRemainder = 0f
             setBreathingAirTarget(event, air, airAfterBreathing, airLoss)
-            breathingFormulaEntityThisTick = entity
+            cc.suppressBreathingBubbles = true
         }
     }
 
@@ -458,10 +456,12 @@ object CCEvents {
 
     @SubscribeEvent
     fun onLivingDrown(event: net.neoforged.neoforge.event.entity.living.LivingDrownEvent) {
-        if (breathingFormulaEntityThisTick !== event.entity) return
+        val cce = ChestCavityEntity.of(event.entity) ?: return
+        val cc = cce.chestCavityInstance
+        if (!cc.suppressBreathingBubbles) return
         // Fabric's direct DROWN damage did not emit vanilla drowning bubbles.
         event.setBubbleCount(0)
-        breathingFormulaEntityThisTick = null
+        cc.suppressBreathingBubbles = false
     }
 
     // --- Dimension change sync ---

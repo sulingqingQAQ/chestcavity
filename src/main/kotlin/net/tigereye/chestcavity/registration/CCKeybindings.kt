@@ -95,13 +95,22 @@ object CCKeybindingHandler {
 
     @SubscribeEvent
     fun onClientTick(event: ClientTickEvent.Post) {
-        if (Minecraft.getInstance().player == null) return
+        if (Minecraft.getInstance().player == null) {
+            discardClicks(CCKeybindings.UTILITY_ABILITIES)
+            discardClicks(CCKeybindings.ATTACK_ABILITIES)
+            CCKeybindings.INDIVIDUAL_ABILITY_KEYS.forEach { (key, _) -> discardClicks(key) }
+            return
+        }
 
         processKey(CCKeybindings.UTILITY_ABILITIES, CCKeybindings.UTILITY_ABILITY_IDS)
         processKey(CCKeybindings.ATTACK_ABILITIES, CCKeybindings.ATTACK_ABILITY_IDS)
         CCKeybindings.INDIVIDUAL_ABILITY_KEYS.forEach { (key, ability) ->
             processKey(key, listOf(ability))
         }
+    }
+
+    private fun discardClicks(key: KeyMapping) {
+        while (key.consumeClick()) { }
     }
 
     private fun processKey(key: KeyMapping, abilities: List<ResourceLocation>) {
