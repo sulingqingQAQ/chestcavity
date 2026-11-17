@@ -95,9 +95,18 @@ object OrganTickListeners {
         if (photosynthesis <= 0) return
         cc.photosynthesisProgress += (photosynthesis * entity.level().getMaxLocalRawBrightness(entity.blockPosition())).toInt()
         val threshold = CCConfig.PHOTOSYNTHESIS_FREQUENCY.get() * 8 * 15
-        if (cc.photosynthesisProgress < threshold) return
+        if (cc.photosynthesisProgress <= threshold) return
         cc.photosynthesisProgress = 0
-        if (entity is Player) entity.foodData.eat(1, 0.5f) else entity.heal(1f)
+        if (entity is Player) {
+            val food = entity.foodData
+            when {
+                food.needsFood() -> food.eat(1, 0f)
+                food.saturationLevel < food.foodLevel -> food.eat(1, 0.5f)
+                else -> entity.heal(1f)
+            }
+        } else {
+            entity.heal(1f)
+        }
     }
 
     private fun tickHydroallergenic(entity: LivingEntity, cc: ChestCavityInstance) {
