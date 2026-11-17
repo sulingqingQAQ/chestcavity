@@ -9,7 +9,6 @@ import net.neoforged.bus.api.SubscribeEvent
 import net.neoforged.fml.common.EventBusSubscriber
 import net.neoforged.neoforge.event.RegisterCommandsEvent
 import net.neoforged.neoforge.event.entity.living.LivingDamageEvent
-import net.neoforged.neoforge.event.entity.living.LivingFallEvent
 import net.neoforged.neoforge.event.entity.living.LivingIncomingDamageEvent
 import net.neoforged.neoforge.event.entity.living.MobEffectEvent
 import net.neoforged.neoforge.event.entity.player.PlayerEvent
@@ -111,14 +110,6 @@ object CCEvents {
         }
 
         event.amount = damage
-    }
-
-    // Fall distance is the value LivingFallEvent feeds into vanilla fall-damage calculation.
-    @SubscribeEvent
-    fun onLivingFall(event: LivingFallEvent) {
-        if (event.distance <= 0f) return
-        val cc = ChestCavityEntity.of(event.entity)?.chestCavityInstance ?: return
-        event.distance *= 1f - cc.organScore(CCOrganScores.BUOYANT) / 3f
     }
 
     // --- Damage: apply on-hit from ATTACKER ---
@@ -342,41 +333,6 @@ object CCEvents {
             return
         }
 
-        // The Fabric shear hook only runs for a successful Sheep shear.
-        if (stack.`is`(net.minecraft.world.item.Items.SHEARS) && target is net.minecraft.world.entity.animal.Sheep) {
-            if (target.level().isClientSide || !target.readyForShearing()) return
-            val cce = ChestCavityEntity.of(target) ?: return
-            val cc = cce.chestCavityInstance
-            if (!cc.opened) return
-            val silk = cc.organScore(CCOrganScores.SILK)
-            if (silk <= 0) return
-            if (silk >= 2) {
-                val cobweb = net.minecraft.world.item.ItemStack(net.minecraft.world.item.Items.COBWEB, silk.toInt() / 2)
-                target.spawnAtLocation(cobweb)
-            }
-            if (silk.toInt() % 2 >= 1) {
-                target.spawnAtLocation(net.minecraft.world.item.Items.STRING)
-            }
-            return
-        }
-
-        // The Fabric milking hook is limited to an adult cow using a bucket.
-        if (stack.`is`(net.minecraft.world.item.Items.BUCKET) &&
-            target is net.minecraft.world.entity.animal.Cow && !target.isBaby
-        ) {
-            if (target.level().isClientSide) return
-            val cce = ChestCavityEntity.of(target) ?: return
-            val cc = cce.chestCavityInstance
-            if (!cc.opened) return
-            val silk = cc.organScore(CCOrganScores.SILK)
-            if (silk <= 0) return
-            if (target.hasEffect(net.tigereye.chestcavity.registration.CCStatusEffects.SILK_COOLDOWN)) return
-            if (!net.tigereye.chestcavity.util.OrganUtil.spinWeb(target, cc, silk)) return
-            target.addEffect(net.minecraft.world.effect.MobEffectInstance(
-                net.tigereye.chestcavity.registration.CCStatusEffects.SILK_COOLDOWN,
-                CCConfig.SILK_COOLDOWN.get(), 0, false, false, true
-            ))
-        }
     }
 
     // --- Jump height modification ---
