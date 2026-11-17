@@ -185,7 +185,7 @@ object OrganActivationListeners {
         level.setBlock(blockPos, replacement, 2)
 
         val baseDuration = CCConfig.RUMINATION_TIME.get() * CCConfig.RUMINATION_GRASS_PER_SQUARE.get()
-        val maxDuration = baseDuration * CCConfig.RUMINATION_SQUARES_PER_STOMACH.get() * grazing.toInt()
+        val maxDuration = (baseDuration * CCConfig.RUMINATION_SQUARES_PER_STOMACH.get() * grazing).toInt()
         val currentDuration = entity.getEffect(CCStatusEffects.RUMINATING)?.duration ?: 0
         val newDuration = (currentDuration + baseDuration).coerceAtMost(maxDuration)
 
