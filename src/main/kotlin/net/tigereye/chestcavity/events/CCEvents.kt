@@ -351,8 +351,12 @@ object CCEvents {
     }
 
     // --- Breath/air modification ---
+    // CommonHooks posts LivingDrownEvent synchronously after LivingBreatheEvent.
+    private var breathingFormulaEntityThisTick: LivingEntity? = null
+
     @SubscribeEvent
     fun onLivingBreathe(event: net.neoforged.neoforge.event.entity.living.LivingBreatheEvent) {
+        breathingFormulaEntityThisTick = null
         val entity = event.entity
         val cce = ChestCavityEntity.of(entity) ?: return
         val cc = cce.chestCavityInstance
@@ -364,44 +368,100 @@ object CCEvents {
         val capacity = cc.organScore(CCOrganScores.BREATH_CAPACITY)
         val waterbreath = cc.organScore(CCOrganScores.WATERBREATH)
         val recovery = cc.organScore(CCOrganScores.BREATH_RECOVERY)
+        val maxAir = entity.getMaxAirSupply()
+        val air = entity.getAirSupply()
+        val eyeInBubbleColumn = entity.level().getBlockState(
+            net.minecraft.core.BlockPos.containing(entity.getX(), entity.getEyeY(), entity.getZ())
+        ).`is`(net.minecraft.world.level.block.Blocks.BUBBLE_COLUMN)
 
-        // If nothing changed from defaults, don't interfere
-        if (capacity == defaultCapacity && waterbreath == defaultWaterbreath && recovery == defaultRecovery) return
+        if (entity.isUnderWater && !eyeInBubbleColumn) {
+            // Match applyBreathInWater's independent capacity/waterbreath default guard.
+            if (capacity == defaultCapacity && waterbreath == defaultWaterbreath) return
+            // Vanilla skips its underwater-loss path for water-breathing effects and native breathers.
+            if (event.canBreathe()) return
 
-        // Underwater: waterbreath allows breathing, capacity slows air loss
-        if (entity.isUnderWater) {
-            var wb = waterbreath
-            if (entity.isSprinting) wb /= 4f
-            if (wb > 0) {
-                // Can breathe underwater — prevent air loss and possibly recover
-                event.setCanBreathe(true)
-                if (wb >= 1f) event.refillAirAmount = event.refillAirAmount.coerceAtLeast(4)
-            } else if (capacity != defaultCapacity) {
-                // Modified lung capacity changes air loss rate
-                val ratio = if (capacity > 0) min(2f / capacity, 20f) else 20f
-                if (ratio > 1f) {
-                    // Lose air faster
-                    event.setConsumeAirAmount((event.consumeAirAmount * ratio).toInt().coerceAtLeast(1))
-                } else if (ratio < 1f) {
-                    // Lose air slower (better lungs)
-                    event.setConsumeAirAmount((event.consumeAirAmount * ratio).toInt().coerceAtLeast(0))
+            var waterBreath = waterbreath
+            if (entity.isSprinting) waterBreath /= 4f
+            var airLoss = 1f
+            if (waterBreath > 0f) airLoss += -2f * waterBreath
+
+            if (airLoss > 0f) {
+                if (event.getConsumeAirAmount() == 0) {
+                    airLoss = 0f
+                } else {
+                    airLoss *= event.getConsumeAirAmount().toFloat()
+                    if (airLoss > 0f) {
+                        val lungRatio = if (capacity != 0f) min(2f / capacity, 20f) else 20f
+                        airLoss = airLoss * lungRatio + cc.lungRemainder
+                    }
                 }
             }
+
+            cc.lungRemainder = airLoss % 1f
+            val airAfterBreathing = minOf(air - airLoss.toInt(), maxAir)
+            if (airAfterBreathing <= -20) cc.lungRemainder = 0f
+            setBreathingAirTarget(event, air, airAfterBreathing, airLoss)
+            breathingFormulaEntityThisTick = entity
         } else {
-            // On land: breath recovery and possible suffocation for gill-only creatures
+            // Match applyBreathOnLand's three-score default guard, including gill-only bodies.
+            if (recovery == defaultRecovery && capacity == defaultCapacity && waterbreath == defaultWaterbreath) return
+
+            val airGain = minOf(4, maxAir)
+            val airAfterVanillaRefill = minOf(air + airGain, maxAir)
+            var airLoss = if (
+                entity.hasEffect(net.minecraft.world.effect.MobEffects.WATER_BREATHING)
+                || entity.hasEffect(net.minecraft.world.effect.MobEffects.CONDUIT_POWER)
+            ) 0f else 1f
+
             var breath = recovery
             if (entity.isSprinting) breath /= 4f
             if (entity.isInWaterRainOrBubble) breath += waterbreath / 4f
+            if (breath > 0f) airLoss += -airGain * breath / 2f
 
-            if (breath <= 0 && recovery < defaultRecovery) {
-                // Can't breathe on land (gills only) — suffocate
-                event.setCanBreathe(false)
-                event.refillAirAmount = 0
-            } else if (breath > defaultRecovery && defaultRecovery > 0) {
-                // Extra breath recovery — refill faster
-                event.setRefillAirAmount((event.refillAirAmount * breath / defaultRecovery).toInt().coerceAtLeast(1))
+            if (airLoss > 0f) {
+                // decreaseAirSupply runs before this event on land too; consume=0 is the Respiration save.
+                if (event.getConsumeAirAmount() == 0) {
+                    airLoss = 0f
+                } else {
+                    val breathRatio = if (capacity != 0f) min(2f / capacity, 20f) else 20f
+                    airLoss = airLoss * breathRatio + cc.lungRemainder
+                }
+            } else if (airAfterVanillaRefill == maxAir) {
+                // Preserve the original full-air return without changing lungRemainder.
+                setBreathingAirTarget(event, air, airAfterVanillaRefill, airLoss)
+                return
             }
+
+            cc.lungRemainder = airLoss % 1f
+            val airAfterBreathing = minOf(airAfterVanillaRefill - airLoss.toInt() - airGain, maxAir)
+            if (airAfterBreathing <= -20) cc.lungRemainder = 0f
+            setBreathingAirTarget(event, air, airAfterBreathing, airLoss)
+            breathingFormulaEntityThisTick = entity
         }
+    }
+
+    private fun setBreathingAirTarget(
+        event: net.neoforged.neoforge.event.entity.living.LivingBreatheEvent,
+        currentAir: Int,
+        targetAir: Int,
+        airLoss: Float
+    ) {
+        val airChange = targetAir - currentAir
+        if (airChange < 0 || (airChange == 0 && airLoss > 0f)) {
+            event.setCanBreathe(false)
+            event.setConsumeAirAmount(-airChange)
+        } else {
+            event.setCanBreathe(true)
+            event.setRefillAirAmount(airChange)
+        }
+    }
+
+    @SubscribeEvent
+    fun onLivingDrown(event: net.neoforged.neoforge.event.entity.living.LivingDrownEvent) {
+        if (breathingFormulaEntityThisTick !== event.entity) return
+        // Fabric's direct DROWN damage did not emit vanilla drowning bubbles.
+        event.setBubbleCount(0)
+        breathingFormulaEntityThisTick = null
     }
 
     // --- Dimension change sync ---
